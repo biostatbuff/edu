@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Randomized Trial Simulator — Epidemiology Teaching Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #1a1a18;
+    --muted: #5f5e5a;
+    --faint: #9c9a92;
+    --bg: #ffffff;
+    --bg2: #f7f6f2;
+    --bg3: #f1f0eb;
+    --border: rgba(60,60,50,0.12);
+    --borderem: rgba(60,60,50,0.28);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --trt: #185FA5;
+    --trt-bg: #E6F1FB;
+    --ctl: #D85A30;
+    --ctl-bg: #FAECE7;
+    --good: #1D9E75;
+    --warn: #D85A30;
+    --sig: #185FA5;
+    --ns: #888780;
+    --mono: 'Courier New', Courier, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e8e6de;
+      --muted: #9c9a92;
+      --faint: #6b6a64;
+      --bg: #1c1c1a;
+      --bg2: #242422;
+      --bg3: #2a2a28;
+      --border: rgba(200,196,180,0.1);
+      --borderem: rgba(200,196,180,0.25);
+      --trt: #4a9fd4;
+      --trt-bg: #0d1e30;
+      --ctl: #f07850;
+      --ctl-bg: #2e1a12;
+      --good: #2ec48f;
+      --warn: #f07850;
+      --sig: #4a9fd4;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg3);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    line-height: 1.5;
+  }
+
+  .page-header { max-width: 800px; margin: 0 auto 2rem; }
+  .page-header h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
+  .page-header p { font-size: 14px; color: var(--muted); }
+  .badge { display: inline-block; font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--bg2); border: 0.5px solid var(--border); color: var(--muted); margin-left: 8px; vertical-align: middle; }
+
+  .app { max-width: 800px; margin: 0 auto; background: var(--bg); border-radius: var(--radius-lg); border: 0.5px solid var(--border); overflow: hidden; }
+
+  .tabs { display: flex; border-bottom: 0.5px solid var(--border); background: var(--bg2); }
+  .tab { font-size: 13px; padding: 12px 16px; cursor: pointer; border: none; background: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; font-family: inherit; }
+  .tab.active { color: var(--ink); font-weight: 500; border-bottom-color: var(--ink); }
+  .tab:hover:not(.active) { color: var(--ink); }
+
+  .panel { display: none; padding: 1.5rem; }
+  .panel.active { display: block; }
+
+  .section-label { font-size: 11px; font-weight: 500; letter-spacing: .07em; color: var(--faint); text-transform: uppercase; margin-bottom: .75rem; }
+
+  .controls { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .ctrl-row { display: flex; align-items: center; gap: 12px; margin-bottom: .65rem; }
+  .ctrl-row:last-child { margin-bottom: 0; }
+  .ctrl-label { font-size: 13px; color: var(--muted); width: 185px; flex-shrink: 0; line-height: 1.4; }
+  .ctrl-row input[type=range] { flex: 1; accent-color: var(--ink); }
+  .ctrl-val { font-size: 13px; font-weight: 500; color: var(--ink); width: 52px; text-align: right; font-family: var(--mono); }
+  .ctrl-row select { flex: 1; font-size: 13px; padding: 5px 8px; border: 0.5px solid var(--borderem); border-radius: var(--radius-md); background: var(--bg); color: var(--ink); font-family: inherit; }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: var(--bg2); border-radius: var(--radius-md); padding: .875rem; text-align: center; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: .35rem; line-height: 1.3; }
+  .metric-val { font-size: 19px; font-weight: 500; color: var(--ink); font-family: var(--mono); }
+  .metric-val.sig  { color: var(--sig); }
+  .metric-val.ns   { color: var(--ns); }
+  .metric-val.good { color: var(--good); }
+  .metric-val.warn { color: var(--warn); }
+  .metric-val.small { font-size: 13px; padding-top: 3px; }
+
+  .chart-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 1.25rem; }
+  .chart-label { font-size: 12px; color: var(--muted); margin-bottom: .75rem; }
+
+  .insight { border-left: 2px solid var(--borderem); padding: .875rem 1rem; background: var(--bg2); border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: 13px; color: var(--muted); line-height: 1.65; margin-bottom: 1.25rem; }
+  .insight strong { color: var(--ink); font-weight: 500; }
+  .insight.sig-b { border-left-color: var(--sig); }
+  .insight.ns-b  { border-left-color: var(--ns); }
+  .insight.good-b { border-left-color: var(--good); }
+  .insight.warn-b { border-left-color: var(--warn); }
+  .insight:last-child { margin-bottom: 0; }
+
+  .alloc-vis { display: flex; gap: 3px; flex-wrap: wrap; padding: .875rem; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 1rem; }
+  .alloc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .dot-t { background: #185FA5; }
+  .dot-c { background: #D85A30; }
+
+  .legend-row { display: flex; gap: 16px; margin-bottom: .75rem; flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+  .leg-sq { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  .flow-boxes { display: flex; flex-direction: column; gap: 8px; margin-bottom: 1.25rem; }
+  .flow-row { display: flex; gap: 8px; align-items: stretch; }
+  .flow-box { flex: 1; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-md); padding: .65rem .875rem; font-size: 13px; color: var(--muted); }
+  .flow-box strong { font-weight: 500; color: var(--ink); display: block; margin-bottom: 2px; font-size: 13px; }
+  .flow-box.trt { border-left: 2px solid #185FA5; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .flow-box.ctl { border-left: 2px solid #D85A30; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .flow-box.rand { border-left: 2px solid #1D9E75; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .flow-arrow { font-size: 16px; color: var(--faint); flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 24px; }
+
+  .balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.25rem; }
+  .balance-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: .875rem 1rem; }
+  .balance-card h4 { font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: .65rem; text-transform: uppercase; letter-spacing: .05em; }
+  .balance-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 4px 0; border-bottom: 0.5px solid var(--border); }
+  .balance-row:last-child { border-bottom: none; }
+  .balance-name { color: var(--muted); }
+  .balance-vals { display: flex; gap: 14px; }
+  .bval { font-family: var(--mono); font-size: 12px; font-weight: 500; width: 44px; text-align: right; }
+  .bval-t { color: #185FA5; }
+  .bval-c { color: #D85A30; }
+  .smd { font-family: var(--mono); font-size: 12px; width: 40px; text-align: right; }
+  .smd-ok { color: #1D9E75; }
+  .smd-warn { color: #D85A30; }
+
+  .ipp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.25rem; }
+  .ipp-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: .875rem 1rem; }
+  .ipp-card h4 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+  .ipp-card.itt h4 { color: #185FA5; }
+  .ipp-card.ppt h4 { color: #D85A30; }
+  .ipp-stat { font-size: 26px; font-weight: 500; font-family: var(--mono); color: var(--ink); }
+  .ipp-sub { font-size: 12px; color: var(--muted); margin-top: .2rem; }
+  .ipp-detail { font-size: 12px; color: var(--muted); margin-top: .65rem; line-height: 1.5; }
+
+  canvas { display: block; width: 100% !important; }
+
+  @media (max-width: 540px) {
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .balance-grid, .ipp-grid { grid-template-columns: 1fr; }
+    .dag-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Randomized Trial Simulator <span class="badge">Epidemiology</span></h1>
+  <p>Explore trial design, covariate balance, analysis strategies, and ITT vs per-protocol estimation.</p>
+</div>
+
+<div class="app">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('design', this)">Trial design</button>
+    <button class="tab" onclick="switchTab('balance', this)">Balance</button>
+    <button class="tab" onclick="switchTab('results', this)">Results</button>
+    <button class="tab" onclick="switchTab('itt', this)">ITT vs per-protocol</button>
+  </div>
+
+  <!-- ═══ DESIGN ═══ -->
+  <div id="panel-design" class="panel active">
+    <div class="controls">
+      <div class="section-label">Population &amp; allocation</div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Sample size (N)</span>
+        <input type="range" id="d-n" min="50" max="2000" step="50" value="400" oninput="onCtrl()">
+        <span class="ctrl-val" id="d-n-v">400</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Allocation ratio (T:C)</span>
+        <select id="d-ratio" onchange="onCtrl()">
+          <option value="0.5">1:1 (equal)</option>
+          <option value="0.67">2:1</option>
+          <option value="0.75">3:1</option>
+          <option value="0.33">1:2</option>
+        </select>
+        <span class="ctrl-val"></span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Randomisation method</span>
+        <select id="d-method" onchange="onCtrl()">
+          <option value="simple">Simple</option>
+          <option value="block">Block (size 4)</option>
+          <option value="strat">Stratified block</option>
+        </select>
+        <span class="ctrl-val"></span>
+      </div>
+      <div style="margin-top:.875rem;padding-top:.875rem;border-top:0.5px solid var(--border)">
+        <div class="section-label">Outcome</div>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Outcome type</span>
+        <select id="d-outcome" onchange="onCtrl()">
+          <option value="binary">Binary (event / no event)</option>
+          <option value="continuous">Continuous</option>
+          <option value="time">Time-to-event (survival)</option>
+        </select>
+        <span class="ctrl-val"></span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Control event rate / mean</span>
+        <input type="range" id="d-base" min="0.05" max="0.8" step="0.05" value="0.3" oninput="onCtrl()">
+        <span class="ctrl-val" id="d-base-v">0.30</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">True treatment effect</span>
+        <input type="range" id="d-effect" min="-0.6" max="0.1" step="0.05" value="-0.2" oninput="onCtrl()">
+        <span class="ctrl-val" id="d-effect-v">-0.20</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Outcome noise (SD)</span>
+        <input type="range" id="d-noise" min="0.1" max="2" step="0.1" value="0.8" oninput="onCtrl()">
+        <span class="ctrl-val" id="d-noise-v">0.80</span>
+      </div>
+    </div>
+
+    <div class="flow-boxes" id="flow-boxes"></div>
+
+    <div class="section-label" style="margin-bottom:.5rem">Allocation sequence — first 120 participants</div>
+    <div class="alloc-vis" id="alloc-vis"></div>
+    <div class="legend-row" style="margin-bottom:1.25rem">
+      <div class="leg"><div class="leg-sq" style="background:#185FA5"></div>Treatment</div>
+      <div class="leg"><div class="leg-sq" style="background:#D85A30"></div>Control</div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Treatment arm (n)</div><div class="metric-val" id="d-nt">—</div></div>
+      <div class="metric"><div class="metric-label">Control arm (n)</div><div class="metric-val" id="d-nc">—</div></div>
+      <div class="metric"><div class="metric-label">Estimated power</div><div class="metric-val" id="d-power">—</div></div>
+      <div class="metric"><div class="metric-label">Design</div><div class="metric-val small" id="d-design">—</div></div>
+    </div>
+
+    <div class="insight" id="d-insight"></div>
+  </div>
+
+  <!-- ═══ BALANCE ═══ -->
+  <div id="panel-balance" class="panel">
+    <div class="controls">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Covariate seed (resample)</span>
+        <input type="range" id="b-seed" min="1" max="50" step="1" value="7" oninput="onCtrl()">
+        <span class="ctrl-val" id="b-seed-v">7</span>
+      </div>
+    </div>
+
+    <div class="balance-grid" id="balance-grid"></div>
+
+    <div class="chart-card">
+      <div class="chart-label">Standardised mean differences — SMD &lt; 0.1 indicates good balance</div>
+      <div style="position:relative;height:200px"><canvas id="smd-chart"></canvas></div>
+    </div>
+
+    <div class="insight" id="b-insight"></div>
+  </div>
+
+  <!-- ═══ RESULTS ═══ -->
+  <div id="panel-results" class="panel">
+    <div class="controls">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Outcome seed (new trial)</span>
+        <input type="range" id="r-seed" min="1" max="99" step="1" value="42" oninput="onCtrl()">
+        <span class="ctrl-val" id="r-seed-v">42</span>
+      </div>
+    </div>
+
+    <div class="metrics" id="r-metrics"></div>
+
+    <div class="chart-card">
+      <div class="chart-label" id="r-chart-title">Outcome by arm</div>
+      <div class="legend-row" id="r-legend"></div>
+      <div id="r-chart-wrap"></div>
+    </div>
+
+    <div class="insight" id="r-insight"></div>
+  </div>
+
+  <!-- ═══ ITT ═══ -->
+  <div id="panel-itt" class="panel">
+    <div class="controls">
+      <div class="section-label">Non-adherence</div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Non-adherence rate (trt arm)</span>
+        <input type="range" id="i-nonadh" min="0" max="0.6" step="0.05" value="0.2" oninput="onCtrl()">
+        <span class="ctrl-val" id="i-nonadh-v">20%</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Crossover rate (ctrl → trt)</span>
+        <input type="range" id="i-cross" min="0" max="0.4" step="0.05" value="0.1" oninput="onCtrl()">
+        <span class="ctrl-val" id="i-cross-v">10%</span>
+      </div>
+    </div>
+
+    <div class="ipp-grid" id="ipp-grid"></div>
+
+    <div class="chart-card">
+      <div class="chart-label">ITT vs per-protocol estimated risk ratio</div>
+      <div style="position:relative;height:180px"><canvas id="ipp-chart"></canvas></div>
+    </div>
+
+    <div class="insight" id="i-insight"></div>
+  </div>
+</div>
+
+<script>
+let smdChart = null, rChart = null, ippChart = null;
+let trialData = null;
+
+function randn() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function seededRng(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+}
+
+function pval(z) {
+  const a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+  const p = 0.2316419, c = 0.39894228, absz = Math.abs(z);
+  const t = 1 / (1 + p * absz);
+  let poly = 0, tp = t;
+  for (let i = 0; i < 5; i++) { poly += a[i] * tp; tp *= t; }
+  const q = 1 - c * Math.exp(-0.5 * absz * absz) * poly;
+  return 2 * (1 - q);
+}
+
+function mean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+function sd(arr) {
+  const m = mean(arr);
+  return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(arr.length - 1, 1));
+}
+
+function ols(x, y) {
+  const n = x.length, mx = mean(x), my = mean(y);
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (x[i] - mx) * (y[i] - my); den += (x[i] - mx) ** 2; }
+  return den ? num / den : 0;
+}
+
+function ttest(a, b) {
+  const ma = mean(a), mb = mean(b), na = a.length, nb = b.length;
+  const se = Math.sqrt(sd(a) ** 2 / na + sd(b) ** 2 / nb);
+  if (!se) return { z: 0, p: 1 };
+  const z = (ma - mb) / se;
+  return { z, p: pval(z), diff: ma - mb };
+}
+
+function propTest(ea, na, eb, nb) {
+  const pa = ea / na, pb = eb / nb;
+  const p0 = (ea + eb) / (na + nb);
+  const se = Math.sqrt(p0 * (1 - p0) * (1 / na + 1 / nb));
+  if (!se) return { z: 0, p: 1, rr: 1, rd: 0, pa, pb };
+  const z = (pa - pb) / se;
+  return { z, p: pval(z), rr: pa / pb, rd: pa - pb, pa, pb };
+}
+
+function allocate(n, ratio, method, rng) {
+  const arms = [];
+  if (method === 'simple') {
+    for (let i = 0; i < n; i++) arms.push(rng() < ratio ? 'T' : 'C');
+  } else if (method === 'block') {
+    const bs = 4, pT = Math.round(ratio * bs);
+    for (let i = 0; i < n;) {
+      const blk = [...Array(pT).fill('T'), ...Array(bs - pT).fill('C')];
+      for (let j = blk.length - 1; j > 0; j--) { const k = Math.floor(rng() * (j + 1)); [blk[j], blk[k]] = [blk[k], blk[j]]; }
+      for (let j = 0; j < bs && i < n; j++, i++) arms.push(blk[j]);
+    }
+  } else {
+    const strata = ['M_young', 'M_old', 'F_young', 'F_old'];
+    const ni = Math.ceil(n / 4), bs = 4, pT = Math.round(ratio * bs);
+    for (const _ of strata) {
+      for (let i = 0; i < ni && arms.length < n;) {
+        const blk = [...Array(pT).fill('T'), ...Array(bs - pT).fill('C')];
+        for (let j = blk.length - 1; j > 0; j--) { const k = Math.floor(rng() * (j + 1)); [blk[j], blk[k]] = [blk[k], blk[j]]; }
+        for (let j = 0; j < bs && i < ni && arms.length < n; j++, i++) arms.push(blk[j]);
+      }
+    }
+  }
+  return arms;
+}
+
+function generateTrial(p) {
+  const rng = seededRng(p.rSeed * 31 + p.bSeed);
+  const arms = allocate(p.n, p.ratio, p.method, rng);
+  const nt = arms.filter(a => a === 'T').length, nc = p.n - nt;
+  const covariates = {
+    age: arms.map(() => 50 + 15 * randn()),
+    sex: arms.map(() => rng() < 0.5 ? 1 : 0),
+    bmi: arms.map(() => 27 + 4 * randn()),
+    bp:  arms.map(() => 130 + 20 * randn()),
+  };
+  const outcomes = arms.map((arm) => {
+    const trt = arm === 'T' ? 1 : 0;
+    if (p.outcomeType === 'binary') {
+      const prob = Math.max(0.01, Math.min(0.99, p.base + (trt ? p.effect : 0) + 0.03 * randn()));
+      return rng() < prob ? 1 : 0;
+    } else if (p.outcomeType === 'continuous') {
+      return (trt ? p.effect : 0) + p.noise * randn();
+    } else {
+      const hazard = p.base * (trt ? Math.exp(p.effect * 2) : 1);
+      const t = -Math.log(rng()) / Math.max(0.001, hazard);
+      const censored = rng() < 0.25;
+      return { t: Math.min(t, censored ? rng() * 24 : 24), event: !censored && t < 24 };
+    }
+  });
+  return { arms, nt, nc, covariates, outcomes };
+}
+
+function estimatePower(p) {
+  const nt = Math.round(p.n * p.ratio), nc = p.n - nt;
+  let z;
+  if (p.outcomeType === 'binary') {
+    const pt = Math.max(0.01, p.base + p.effect), pc = p.base;
+    const pp = (nt * pt + nc * pc) / p.n;
+    z = Math.abs(pt - pc) / Math.sqrt(pp * (1 - pp) * (1 / nt + 1 / nc));
+  } else {
+    z = Math.abs(p.effect) / (p.noise * Math.sqrt(1 / nt + 1 / nc));
+  }
+  return Math.min(0.999, Math.max(0.05, 1 - 0.5 * (1 + Math.sign(z - 1.96) * (1 - Math.exp(-0.7 * (z - 1.96) ** 2)))));
+}
+
+function getParams() {
+  return {
+    n: +document.getElementById('d-n').value,
+    ratio: +document.getElementById('d-ratio').value,
+    method: document.getElementById('d-method').value,
+    outcomeType: document.getElementById('d-outcome').value,
+    base: +document.getElementById('d-base').value,
+    effect: +document.getElementById('d-effect').value,
+    noise: +document.getElementById('d-noise').value,
+    bSeed: +document.getElementById('b-seed').value,
+    rSeed: +document.getElementById('r-seed').value,
+    nonadh: +document.getElementById('i-nonadh').value,
+    cross: +document.getElementById('i-cross').value,
+  };
+}
+
+function onCtrl() {
+  const p = getParams();
+  document.getElementById('d-n-v').textContent = p.n;
+  document.getElementById('d-base-v').textContent = p.base.toFixed(2);
+  document.getElementById('d-effect-v').textContent = p.effect.toFixed(2);
+  document.getElementById('d-noise-v').textContent = p.noise.toFixed(2);
+  document.getElementById('b-seed-v').textContent = p.bSeed;
+  document.getElementById('r-seed-v').textContent = p.rSeed;
+  document.getElementById('i-nonadh-v').textContent = Math.round(p.nonadh * 100) + '%';
+  document.getElementById('i-cross-v').textContent = Math.round(p.cross * 100) + '%';
+
+  trialData = generateTrial(p);
+  renderDesign(p, trialData);
+  renderBalance(p, trialData);
+  renderResults(p, trialData);
+  renderITT(p, trialData);
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function renderDesign(p, d) {
+  document.getElementById('d-nt').textContent = d.nt;
+  document.getElementById('d-nc').textContent = d.nc;
+  const pow = estimatePower(p);
+  const powEl = document.getElementById('d-power');
+  powEl.textContent = Math.round(pow * 100) + '%';
+  powEl.className = 'metric-val ' + (pow >= 0.8 ? 'good' : 'warn');
+  const methodLabels = { simple: 'Simple random', block: 'Block (k=4)', strat: 'Stratified block' };
+  document.getElementById('d-design').textContent = methodLabels[p.method];
+
+  const previewRng = seededRng(p.rSeed * 31 + p.bSeed);
+  const previewArms = allocate(Math.min(120, p.n), p.ratio, p.method, previewRng);
+  document.getElementById('alloc-vis').innerHTML = previewArms.map(a => `<div class="alloc-dot ${a === 'T' ? 'dot-t' : 'dot-c'}"></div>`).join('');
+
+  const ratioLabel = { '0.5': '1:1', '0.67': '2:1', '0.75': '3:1', '0.33': '1:2' }[String(p.ratio)] || p.ratio;
+  document.getElementById('flow-boxes').innerHTML = `
+    <div class="flow-row"><div class="flow-box rand"><strong>Eligible population</strong>${p.n} participants enrolled</div></div>
+    <div class="flow-row"><div class="flow-arrow">↓</div><div class="flow-box rand" style="flex:1"><strong>Randomisation</strong>${methodLabels[p.method]} — ratio ${ratioLabel}</div></div>
+    <div class="flow-row">
+      <div class="flow-box trt"><strong>Treatment arm</strong>${d.nt} participants assigned</div>
+      <div class="flow-box ctl"><strong>Control arm</strong>${d.nc} participants assigned</div>
+    </div>`;
+
+  const methodDesc = {
+    simple: 'Simple randomisation: each participant independently assigned with fixed probability. Can produce imbalance by chance, especially in small samples.',
+    block: 'Block randomisation (block size 4): balance guaranteed within every 4 consecutive assignments, reducing temporal confounding from drifting recruitment.',
+    strat: 'Stratified block randomisation: blocks applied within predefined strata (sex × age). Ensures balance on key prognostic variables and at interim analyses.'
+  };
+  document.getElementById('d-insight').innerHTML = `<strong>Design note:</strong> ${methodDesc[p.method]} Estimated power: <strong>${Math.round(pow * 100)}%</strong> — ${pow >= 0.8 ? 'sufficient to detect the specified effect at α=0.05.' : 'insufficient — increase N or the effect size to achieve 80% power.'}`;
+}
+
+function renderBalance(p, d) {
+  const covNames = ['Age', 'Sex (% male)', 'BMI', 'Systolic BP'];
+  const covKeys  = ['age', 'sex', 'bmi', 'bp'];
+  const T_idx = d.arms.map((a, i) => a === 'T' ? i : -1).filter(i => i >= 0);
+  const C_idx = d.arms.map((a, i) => a === 'C' ? i : -1).filter(i => i >= 0);
+
+  const smds = covKeys.map((k, ki) => {
+    const Tv = T_idx.map(i => d.covariates[k][i]);
+    const Cv = C_idx.map(i => d.covariates[k][i]);
+    const mT = mean(Tv), mC = mean(Cv);
+    const pooledSD = Math.sqrt((sd(Tv) ** 2 + sd(Cv) ** 2) / 2) || 1;
+    return { name: covNames[ki], key: k, mT, mC, smd: Math.abs(mT - mC) / pooledSD };
+  });
+
+  const fmt = (s, v) => s.key === 'sex' ? Math.round(v * 100) + '%' : v.toFixed(1);
+
+  document.getElementById('balance-grid').innerHTML = `
+    <div class="balance-card">
+      <h4>Covariate means</h4>
+      <div class="balance-row" style="margin-bottom:4px">
+        <span class="balance-name">Variable</span>
+        <div class="balance-vals"><span class="bval bval-t">Trt</span><span class="bval bval-c">Ctrl</span></div>
+      </div>
+      ${smds.map(s => `<div class="balance-row"><span class="balance-name">${s.name}</span><div class="balance-vals"><span class="bval bval-t">${fmt(s, s.mT)}</span><span class="bval bval-c">${fmt(s, s.mC)}</span></div></div>`).join('')}
+    </div>
+    <div class="balance-card">
+      <h4>Std. mean difference</h4>
+      <div class="balance-row" style="margin-bottom:4px">
+        <span class="balance-name">Variable</span>
+        <span class="smd" style="color:var(--muted)">SMD</span>
+      </div>
+      ${smds.map(s => `<div class="balance-row"><span class="balance-name">${s.name}</span><span class="smd ${s.smd < 0.1 ? 'smd-ok' : 'smd-warn'}">${s.smd.toFixed(2)}</span></div>`).join('')}
+    </div>`;
+
+  if (smdChart) smdChart.destroy();
+  const ctx = document.getElementById('smd-chart').getContext('2d');
+  const maxSMD = Math.max(...smds.map(s => s.smd));
+  smdChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: smds.map(s => s.name),
+      datasets: [{ data: smds.map(s => +s.smd.toFixed(3)), backgroundColor: smds.map(s => s.smd < 0.1 ? 'rgba(29,158,117,0.7)' : 'rgba(216,90,48,0.7)'), borderColor: smds.map(s => s.smd < 0.1 ? '#1D9E75' : '#D85A30'), borderWidth: 1, borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' SMD: ' + ctx.parsed.x.toFixed(2) } } },
+      scales: {
+        x: { min: 0, max: Math.max(0.35, maxSMD * 1.3), title: { display: true, text: 'Standardised mean difference', font: { size: 11 }, color: '#888780' }, grid: { color: 'rgba(136,135,128,0.15)' }, ticks: { font: { size: 11 }, color: '#888780', callback: v => v.toFixed(2) } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888780' } }
+      },
+      maintainAspectRatio: false
+    }
+  });
+
+  const anyImbal = smds.some(s => s.smd >= 0.1);
+  document.getElementById('b-insight').innerHTML = `<strong>Balance check:</strong> ${anyImbal ? 'One or more covariates show SMD ≥ 0.1. This reflects chance imbalance, not a flaw in randomisation — it occurs in any finite sample. Consider adjusting for these in the analysis model.' : 'All covariates are well balanced (SMD < 0.1). Randomisation has successfully distributed measured prognostic factors across arms.'} Try changing the seed above to see a different random trial — this demonstrates sampling variability. The ${p.method === 'strat' ? 'stratified block design is most effective at minimising covariate imbalance' : p.method === 'block' ? 'block design reduces temporal imbalance but not baseline covariate imbalance' : 'simple design can produce the largest covariate imbalance'}.`;
+}
+
+function renderResults(p, d) {
+  const T_idx = d.arms.map((a, i) => a === 'T' ? i : -1).filter(i => i >= 0);
+  const C_idx = d.arms.map((a, i) => a === 'C' ? i : -1).filter(i => i >= 0);
+  if (rChart) { rChart.destroy(); rChart = null; }
+
+  if (p.outcomeType === 'binary') {
+    const Tev = T_idx.filter(i => d.outcomes[i] === 1).length;
+    const Cev = C_idx.filter(i => d.outcomes[i] === 1).length;
+    const res = propTest(Tev, d.nt, Cev, d.nc);
+    const sig = res.p < 0.05;
+    document.getElementById('r-metrics').innerHTML = `
+      <div class="metric"><div class="metric-label">Trt event rate</div><div class="metric-val ${res.pa < res.pb ? 'good' : 'warn'}">${Math.round(res.pa * 100)}%</div></div>
+      <div class="metric"><div class="metric-label">Ctrl event rate</div><div class="metric-val">${Math.round(res.pb * 100)}%</div></div>
+      <div class="metric"><div class="metric-label">Risk ratio</div><div class="metric-val ${sig ? 'sig' : 'ns'}">${res.rr.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-label">p-value</div><div class="metric-val ${sig ? 'sig' : 'ns'}">${res.p < 0.001 ? '<0.001' : res.p.toFixed(3)}</div></div>`;
+    document.getElementById('r-chart-title').textContent = 'Event rates by arm';
+    document.getElementById('r-legend').innerHTML = `<div class="leg"><div class="leg-sq" style="background:#185FA5"></div>Treatment</div><div class="leg"><div class="leg-sq" style="background:#D85A30"></div>Control</div>`;
+    document.getElementById('r-chart-wrap').innerHTML = '<div style="position:relative;height:160px"><canvas id="r-chart-c"></canvas></div>';
+    rChart = new Chart(document.getElementById('r-chart-c').getContext('2d'), {
+      type: 'bar',
+      data: { labels: ['Event rate'], datasets: [{ label: 'Treatment', data: [+res.pa.toFixed(3)], backgroundColor: 'rgba(24,95,165,0.7)', borderColor: '#185FA5', borderWidth: 1, borderRadius: 4 }, { label: 'Control', data: [+res.pb.toFixed(3)], backgroundColor: 'rgba(216,90,48,0.7)', borderColor: '#D85A30', borderWidth: 1, borderRadius: 4 }] },
+      options: { animation: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + (ctx.parsed.y * 100).toFixed(1) + '%' } } }, scales: { y: { min: 0, max: 1, ticks: { callback: v => (v * 100) + '%', font: { size: 11 }, color: '#888780' }, grid: { color: 'rgba(136,135,128,0.15)' } }, x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888780' } } }, maintainAspectRatio: false }
+    });
+    const el = document.getElementById('r-insight');
+    el.className = 'insight ' + (sig ? 'sig-b' : 'ns-b');
+    el.innerHTML = `<strong>${sig ? 'Statistically significant result' : 'No significant difference'}:</strong> Treatment event rate ${Math.round(res.pa * 100)}% vs control ${Math.round(res.pb * 100)}% (RR ${res.rr.toFixed(2)}, p=${res.p < 0.001 ? '< 0.001' : res.p.toFixed(3)}). Absolute risk reduction: ${Math.abs(Math.round(res.rd * 100))}%. ${sig ? 'The null hypothesis is rejected at α=0.05.' : 'Fail to reject the null — this may reflect true equivalence or insufficient power (' + Math.round(estimatePower(p) * 100) + '%).'}`;
+
+  } else if (p.outcomeType === 'continuous') {
+    const Tv = T_idx.map(i => d.outcomes[i]), Cv = C_idx.map(i => d.outcomes[i]);
+    const res = ttest(Tv, Cv);
+    const mT = mean(Tv), mC = mean(Cv);
+    const sig = res.p < 0.05;
+    document.getElementById('r-metrics').innerHTML = `
+      <div class="metric"><div class="metric-label">Trt mean</div><div class="metric-val">${mT.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-label">Ctrl mean</div><div class="metric-val">${mC.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-label">Mean difference</div><div class="metric-val ${sig ? 'sig' : 'ns'}">${res.diff.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-label">p-value</div><div class="metric-val ${sig ? 'sig' : 'ns'}">${res.p < 0.001 ? '<0.001' : res.p.toFixed(3)}</div></div>`;
+    const allVals = [...Tv, ...Cv], mn = Math.min(...allVals), mx = Math.max(...allVals), bins = 20, bw = (mx - mn) / bins;
+    const edges = Array.from({ length: bins + 1 }, (_, i) => mn + i * bw);
+    const hist = vals => Array.from({ length: bins }, (_, i) => vals.filter(v => v >= edges[i] && v < edges[i + 1]).length);
+    document.getElementById('r-chart-title').textContent = 'Outcome distribution by arm';
+    document.getElementById('r-legend').innerHTML = `<div class="leg"><div class="leg-sq" style="background:#185FA5"></div>Treatment</div><div class="leg"><div class="leg-sq" style="background:#D85A30"></div>Control</div>`;
+    document.getElementById('r-chart-wrap').innerHTML = '<div style="position:relative;height:200px"><canvas id="r-chart-c"></canvas></div>';
+    rChart = new Chart(document.getElementById('r-chart-c').getContext('2d'), {
+      type: 'bar',
+      data: { labels: edges.slice(0, -1).map(e => e.toFixed(1)), datasets: [{ label: 'Treatment', data: hist(Tv), backgroundColor: 'rgba(24,95,165,0.55)', borderWidth: 0 }, { label: 'Control', data: hist(Cv), backgroundColor: 'rgba(216,90,48,0.45)', borderWidth: 0 }] },
+      options: { animation: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888780', maxTicksLimit: 8 } }, y: { grid: { color: 'rgba(136,135,128,0.15)' }, ticks: { font: { size: 11 }, color: '#888780' } } }, maintainAspectRatio: false }
+    });
+    const el = document.getElementById('r-insight');
+    el.className = 'insight ' + (sig ? 'sig-b' : 'ns-b');
+    el.innerHTML = `<strong>${sig ? 'Statistically significant' : 'No significant difference'}:</strong> Treatment mean ${mT.toFixed(2)} vs control ${mC.toFixed(2)} (difference ${res.diff.toFixed(2)}, p=${res.p < 0.001 ? '< 0.001' : res.p.toFixed(3)}). ${sig ? 'The distributions are separated — inspect overlap in the histogram.' : 'Distributions overlap substantially. Power = ' + Math.round(estimatePower(p) * 100) + '%.'}`;
+
+  } else {
+    // Survival
+    function kmCurve(times, events) {
+      const pts = times.map((t, i) => ({ t, e: events[i] })).sort((a, b) => a.t - b.t);
+      let s = 1, n = pts.length, pi = 0;
+      const curve = [{ x: 0, y: 1 }];
+      for (let si = 1; si <= 50; si++) {
+        const tt = si * 0.48;
+        while (pi < pts.length && pts[pi].t <= tt) { if (pts[pi].e) s *= (n - 1) / n; n--; pi++; }
+        curve.push({ x: +tt.toFixed(2), y: +s.toFixed(4) });
+      }
+      return curve;
+    }
+    function kmMedian(curve) { const c = curve.find(p => p.y <= 0.5); return c ? c.x.toFixed(1) : '> 24'; }
+
+    const Tv = T_idx.map(i => d.outcomes[i]), Cv = C_idx.map(i => d.outcomes[i]);
+    const tT = Tv.map(e => e.t), tC = Cv.map(e => e.t);
+    const eT = Tv.map(e => e.event ? 1 : 0), eC = Cv.map(e => e.event ? 1 : 0);
+    const evRT = (eT.reduce((a, b) => a + b, 0) / eT.length * 100).toFixed(0);
+    const evRC = (eC.reduce((a, b) => a + b, 0) / eC.length * 100).toFixed(0);
+    const kmT = kmCurve(tT, eT), kmC = kmCurve(tC, eC);
+
+    document.getElementById('r-metrics').innerHTML = `
+      <div class="metric"><div class="metric-label">Trt event rate</div><div class="metric-val">${evRT}%</div></div>
+      <div class="metric"><div class="metric-label">Ctrl event rate</div><div class="metric-val">${evRC}%</div></div>
+      <div class="metric"><div class="metric-label">Median surv. (T)</div><div class="metric-val good">${kmMedian(kmT)}</div></div>
+      <div class="metric"><div class="metric-label">Median surv. (C)</div><div class="metric-val">${kmMedian(kmC)}</div></div>`;
+    document.getElementById('r-chart-title').textContent = 'Kaplan-Meier survival curves';
+    document.getElementById('r-legend').innerHTML = `<div class="leg"><div class="leg-sq" style="background:#185FA5"></div>Treatment</div><div class="leg"><div class="leg-sq" style="background:#D85A30"></div>Control</div>`;
+    document.getElementById('r-chart-wrap').innerHTML = '<div style="position:relative;height:240px"><canvas id="r-chart-c"></canvas></div>';
+    rChart = new Chart(document.getElementById('r-chart-c').getContext('2d'), {
+      type: 'line',
+      data: { datasets: [{ label: 'Treatment', data: kmT, borderColor: '#185FA5', backgroundColor: 'rgba(24,95,165,0.08)', fill: true, stepped: true, pointRadius: 0, borderWidth: 2 }, { label: 'Control', data: kmC, borderColor: '#D85A30', backgroundColor: 'rgba(216,90,48,0.06)', fill: true, stepped: true, pointRadius: 0, borderWidth: 2 }] },
+      options: { animation: false, parsing: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + (ctx.parsed.y * 100).toFixed(1) + '%' } } }, scales: { x: { type: 'linear', min: 0, max: 24, title: { display: true, text: 'Time (months)', font: { size: 11 }, color: '#888780' }, grid: { color: 'rgba(136,135,128,0.15)' }, ticks: { font: { size: 11 }, color: '#888780' } }, y: { min: 0, max: 1, title: { display: true, text: 'Survival probability', font: { size: 11 }, color: '#888780' }, grid: { color: 'rgba(136,135,128,0.15)' }, ticks: { font: { size: 11 }, color: '#888780', callback: v => (v * 100) + '%' } } }, maintainAspectRatio: false }
+    });
+    document.getElementById('r-insight').className = 'insight good-b';
+    document.getElementById('r-insight').innerHTML = `<strong>Kaplan-Meier analysis:</strong> Median survival ${kmMedian(kmT)} months (treatment) vs ${kmMedian(kmC)} months (control). Curves are estimated using the product-limit method with ~25% random censoring. The log-rank test compares the full survival distributions; where separation occurs in the KM plot indicates the timing of treatment benefit.`;
+  }
+}
+
+function renderITT(p, d) {
+  if (p.outcomeType !== 'binary') {
+    document.getElementById('ipp-grid').innerHTML = `<div class="ipp-card itt" style="grid-column:1/-1"><h4>Note</h4><p style="font-size:13px;color:var(--muted);margin-top:.5rem">Switch to the binary outcome type in the Design tab to enable the ITT vs per-protocol comparison with event rates.</p></div>`;
+    if (ippChart) { ippChart.destroy(); ippChart = null; }
+    document.getElementById('i-insight').className = 'insight';
+    document.getElementById('i-insight').innerHTML = '<strong>ITT principle:</strong> Regardless of outcome type, all randomised participants are included in the primary analysis in the arm to which they were allocated — regardless of adherence, crossover, or withdrawal. This preserves the comparability created by randomisation.';
+    return;
+  }
+
+  const T_idx = d.arms.map((a, i) => a === 'T' ? i : -1).filter(i => i >= 0);
+  const C_idx = d.arms.map((a, i) => a === 'C' ? i : -1).filter(i => i >= 0);
+
+  const rng = seededRng(p.rSeed * 77 + 13);
+  const nonadhT = T_idx.filter(() => rng() < p.nonadh);
+  const crossC  = C_idx.filter(() => rng() < p.cross);
+
+  const TevITT = T_idx.filter(i => d.outcomes[i] === 1).length;
+  const CevITT = C_idx.filter(i => d.outcomes[i] === 1).length;
+  const resITT = propTest(TevITT, d.nt, CevITT, d.nc);
+
+  const PPT_T = T_idx.filter(i => !nonadhT.includes(i));
+  const PPT_C = [...C_idx.filter(i => !crossC.includes(i)), ...crossC];
+  const TevPPT = PPT_T.filter(i => d.outcomes[i] === 1).length;
+  const CevPPT = PPT_C.filter(i => d.outcomes[i] === 1).length;
+  const resPPT = propTest(TevPPT, PPT_T.length, CevPPT, PPT_C.length);
+
+  document.getElementById('ipp-grid').innerHTML = `
+    <div class="ipp-card itt">
+      <h4>Intention-to-treat (ITT)</h4>
+      <div class="ipp-stat">${resITT.rr.toFixed(2)}</div>
+      <div class="ipp-sub">Risk ratio — all randomised included</div>
+      <div class="ipp-detail">${nonadhT.length} non-adherers retained in trt arm<br>${crossC.length} crossovers retained in ctrl arm</div>
+    </div>
+    <div class="ipp-card ppt">
+      <h4>Per-protocol (PPT)</h4>
+      <div class="ipp-stat">${resPPT.rr.toFixed(2)}</div>
+      <div class="ipp-sub">Risk ratio — protocol compliers only</div>
+      <div class="ipp-detail">${PPT_T.length} in treatment arm<br>${PPT_C.length} in control arm</div>
+    </div>`;
+
+  if (ippChart) ippChart.destroy();
+  ippChart = new Chart(document.getElementById('ipp-chart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: ['ITT', 'Per-protocol'], datasets: [{ data: [+resITT.rr.toFixed(3), +resPPT.rr.toFixed(3)], backgroundColor: ['rgba(24,95,165,0.7)', 'rgba(216,90,48,0.7)'], borderColor: ['#185FA5', '#D85A30'], borderWidth: 1, borderRadius: 4 }] },
+    options: {
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' RR: ' + ctx.parsed.y.toFixed(2) } } },
+      scales: {
+        y: { title: { display: true, text: 'Risk ratio', font: { size: 11 }, color: '#888780' }, grid: { color: 'rgba(136,135,128,0.15)' }, ticks: { font: { size: 11 }, color: '#888780', callback: v => v.toFixed(2) } },
+        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#888780' } }
+      },
+      maintainAspectRatio: false
+    }
+  });
+
+  const diff = Math.abs(resITT.rr - resPPT.rr);
+  document.getElementById('i-insight').className = 'insight';
+  document.getElementById('i-insight').innerHTML = `<strong>ITT vs per-protocol:</strong> With ${Math.round(p.nonadh * 100)}% non-adherence and ${Math.round(p.cross * 100)}% crossover, the ITT estimate (RR ${resITT.rr.toFixed(2)}) ${diff > 0.1 ? 'differs meaningfully from' : 'is close to'} the per-protocol estimate (RR ${resPPT.rr.toFixed(2)}). ITT preserves the causal validity of randomisation and is the primary analysis in confirmatory trials. Per-protocol may better estimate biological efficacy but is vulnerable to selection bias — non-adherers are rarely missing at random.`;
+}
+
+onCtrl();
+</script>
+</body>
+</html>
